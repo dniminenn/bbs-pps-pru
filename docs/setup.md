@@ -16,7 +16,7 @@ uboot_overlay_addr5=/lib/firmware/PRU-RPROC-VRING-00A0.dtbo
 # DS3231 RTC on I2C2
 uboot_overlay_addr6=/lib/firmware/BB-I2C2-DS3231-00A0.dtbo
 
-# PRU PPS pinmux — configures P8_16 as PRU input
+# PRU PPS pinmux (configures P8_16 as PRU input)
 uboot_overlay_addr7=/lib/firmware/PRU-PPS-PINMUX-00A0.dtbo
 
 # PRU remoteproc driver (4.19-ti style, works on 6.6-ti)

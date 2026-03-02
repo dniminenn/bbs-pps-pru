@@ -1,5 +1,13 @@
+/* pru_pps_shm.c
+ * Userspace SHM bridge daemon for PRU PPS timestamping
+ *
+ * SPDX-License-Identifier: MIT-0
+ * Copyright (c) 2026 dniminenn
+ */
+
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdint.h>
@@ -78,24 +86,41 @@ static struct shmTime *shm_get(int unit) {
 
 #define PRU_DRAM0_BASE 0x4A300000
 #define IEP_BASE 0x4A32E000
+#define RPMSG_DEV "/dev/rpmsg_pru30"
 
 int main(int argc, char **argv) {
   int shmunit = 2;
+  const char *rpmsg_dev = RPMSG_DEV;
   int opt;
 
-  while ((opt = getopt(argc, argv, "s:")) != -1) {
+  while ((opt = getopt(argc, argv, "s:r:")) != -1) {
     switch (opt) {
     case 's':
       shmunit = atoi(optarg);
       break;
+    case 'r':
+      rpmsg_dev = optarg;
+      break;
     default:
-      fprintf(stderr, "Usage: %s [-s shmunit]\n", argv[0]);
+      fprintf(stderr, "Usage: %s [-s shmunit] [-r rpmsg_dev]\n", argv[0]);
       return 1;
     }
   }
 
   signal(SIGINT, sighandler);
   signal(SIGTERM, sighandler);
+
+  /* Open rpmsg char device for blocking PPS notifications */
+  int rpmsg_fd = open(rpmsg_dev, O_RDWR);
+  if (rpmsg_fd < 0) {
+    perror(rpmsg_dev);
+    return 1;
+  }
+  /* Send a setup byte to register our endpoint with the PRU */
+  if (write(rpmsg_fd, "S", 1) < 0) {
+    perror("rpmsg setup write");
+    return 1;
+  }
 
   int memfd = open("/dev/mem", O_RDONLY | O_SYNC);
   if (memfd < 0) {
@@ -141,17 +166,33 @@ int main(int argc, char **argv) {
   uint32_t good = 0, bad = 0;
   uint32_t saved_delta = 0;
 
-  printf("pru_pps_shm: polling PRU DRAM -> SHM unit %d (struct size=%zu)\n",
-         shmunit, sizeof(struct shmTime));
+  printf("pru_pps_shm: blocking on %s -> SHM unit %d (struct size=%zu)\n",
+         rpmsg_dev, shmunit, sizeof(struct shmTime));
   printf("Initial PRU seq=%u\n", last_seq);
 
+  struct pollfd pfd = {.fd = rpmsg_fd, .events = POLLIN};
+  char rpmsg_buf[32];
+
   while (running) {
-    uint32_t seq = pru->seq;
-    if (seq == last_seq) {
-      struct timespec ts = {0, 50000};
-      nanosleep(&ts, NULL);
+    /* Block until the PRU sends a PPS notification (2 s timeout) */
+    int pret = poll(&pfd, 1, 2000);
+    if (pret < 0) {
+      if (errno == EINTR)
+        continue;
+      perror("poll");
+      break;
+    }
+    if (pret == 0) {
+      /* timeout — no PPS pulse in 2 s */
+      fprintf(stderr, "pru_pps_shm: no PPS in 2 s (seq=%u)\n", last_seq);
       continue;
     }
+    /* drain the rpmsg message */
+    (void)read(rpmsg_fd, rpmsg_buf, sizeof(rpmsg_buf));
+
+    uint32_t seq = pru->seq;
+    if (seq == last_seq)
+      continue;
 
     uint32_t pps_iep = pru->iep_lo;
 
@@ -271,6 +312,7 @@ int main(int argc, char **argv) {
   }
 
   shm->valid = 0;
+  close(rpmsg_fd);
   printf("pru_pps_shm: exiting (good=%u bad=%u)\n", good, bad);
   return 0;
 }

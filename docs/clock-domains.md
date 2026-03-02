@@ -8,7 +8,7 @@
 | Resolution | 5 ns/tick | ~1 ns (`clock_gettime`) |
 | Width | 32-bit, wraps ~21.5 s | 64-bit `timespec` |
 | Source | PRU-ICSS on-chip oscillator | ARM core, same board crystal |
-| Disciplined? | No — free-running | Yes — Chrony adjusts via `adjtimex` |
+| Disciplined? | No (free-running) | Yes (Chrony adjusts via `adjtimex`) |
 
 Both clocks derive from the same 24 MHz board crystal, but the IEP is **not** NTP-disciplined. Its effective frequency drifts with temperature. The daemon's IIR filter tracks this drift.
 
@@ -30,7 +30,7 @@ for (i = 0; i < 10; i++) {
 }
 ```
 
-This gives a matched pair `(best_cal_iep, best_cal_wall)` — a known point in time expressed in both clock domains simultaneously. The tightest bracket (smallest `spread`, typically 1–2 µs on an RT kernel) is kept because it minimizes the uncertainty of the wall-time estimate.
+This gives a matched pair `(best_cal_iep, best_cal_wall)`, a known point in time expressed in both clock domains simultaneously. The tightest bracket (smallest `spread`, typically 1–2 µs on an RT kernel) is kept because it minimizes the uncertainty of the wall-time estimate.
 
 ### Projection to PPS edge
 
@@ -55,29 +55,30 @@ Nominal value is ~4.99971 ns/tick (200,011,500 ticks/s). The 0.9/0.1 filter time
 
 ## Memory mechanism
 
-The PRU and the ARM share access to **PRU Data RAM 0** at physical address `0x4A300000`. This is ordinary on-chip SRAM — not cacheable on the ARM side when mapped via `/dev/mem` with `O_SYNC`.
+The PRU and the ARM share access to **PRU Data RAM 0** at physical address `0x4A300000`. This is ordinary on-chip SRAM, which is not cacheable on the ARM side when mapped via `/dev/mem` with `O_SYNC`.
 
 | Participant | Access method | Direction |
 |-------------|---------------|-----------|
 | PRU0 | Direct load/store (address `0x00000000` in PRU local space) | Write |
 | Daemon (ARM) | `/dev/mem` mmap at `0x4A300000`, `PROT_READ`, `MAP_SHARED` | Read-only |
 
-The same mechanism is used for the IEP counter registers at `0x4A32E000` — the daemon reads `IEP_COUNT_LO` directly via the mmap'd register page.
+The same mechanism is used for the IEP counter registers at `0x4A32E000`, and the daemon reads `IEP_COUNT_LO` directly via the mmap'd register page.
 
-No UIO, no rpmsg data channel, no DMA. The rpmsg/vring setup in the firmware exists **only** to satisfy the `remoteproc` driver's requirement — it is needed for the kernel to boot the PRU and mark it as running.
+**rpmsg is used as a notification channel**, not a data channel. The PRU sends a 1-byte message (`'P'`) on each PPS edge via the rpmsg transport, which triggers a kernel interrupt that wakes the daemon from `poll()`. The actual timestamp data (`seq`, `iep_lo`) is still read from the DRAM mmap; rpmsg only carries the "wake up" signal. This avoids busy-polling while keeping the data path simple and fast.
 
 ## Ordering guarantees (race-freedom)
 
-### PRU → Daemon (PRU DRAM)
+### PRU → Daemon (PRU DRAM + rpmsg)
 
-The PRU writes `iep_lo` **before** incrementing `seq`:
+The PRU writes `iep_lo`, increments `seq`, then sends the rpmsg notification:
 
 ```c
 pps_data.iep_lo = IEP_COUNT_LO;
 pps_data.seq++;
+pru_rpmsg_send(&transport, arm_dst, arm_src, &notify, 1);
 ```
 
-The PRU executes in strict program order (no reordering, no cache, no write buffer). From the ARM side, `/dev/mem` with `O_SYNC` bypasses the ARM data cache, so the daemon sees stores in the order the PRU made them. The daemon polls `seq` and only reads `iep_lo` after observing a new `seq` value, guaranteeing it reads the correctly paired timestamp.
+The PRU executes in strict program order (no reordering, no cache, no write buffer). The rpmsg send happens *after* both DRAM writes, so by the time the daemon wakes from `poll()` and reads the DRAM, both `iep_lo` and `seq` are guaranteed to be visible. From the ARM side, `/dev/mem` with `O_SYNC` bypasses the ARM data cache, so the daemon sees stores in the order the PRU made them.
 
 ### Daemon → Chrony (NTP SHM)
 
@@ -86,10 +87,10 @@ The daemon uses mode-1 count handshake with `__sync_synchronize()` (full memory 
 ```c
 shm->valid = 0;
 __sync_synchronize();
-shm->count++;              // now odd — "writing"
+shm->count++;              // now odd: "writing"
 // ... write all timestamp fields ...
 __sync_synchronize();
-shm->count++;              // now even — "done"
+shm->count++;              // now even: "done"
 shm->valid = 1;
 ```
 

@@ -1,5 +1,8 @@
 /* main.c
  * PRU0 Firmware: IEP timestamping for PPS signal on P8_16
+ *
+ * SPDX-License-Identifier: MIT-0
+ * Copyright (c) 2026 dniminenn
  */
 
 #include "intc_map_0.h"
@@ -64,7 +67,22 @@ int main(void) {
   pps_data.seq = 0;
   pps_data.iep_lo = 0;
 
+  /*
+   * Wait for the daemon to send a setup byte — this tells us the
+   * ARM-side endpoint addresses (src/dst) to use for notifications.
+   */
+  uint16_t arm_src = 0, arm_dst = 0;
+  while (!arm_src) {
+    if (__R31 & HOST_INT) {
+      if (pru_rpmsg_receive(&transport, &arm_src, &arm_dst, buf, &len) ==
+          PRU_RPMSG_SUCCESS) {
+        /* got the endpoint pair — ready to notify */
+      }
+    }
+  }
+
   uint32_t prev = __R31 & PPS_BIT;
+  char notify = 'P';
 
   for (;;) {
     uint32_t cur = __R31 & PPS_BIT;
@@ -72,12 +90,14 @@ int main(void) {
     if (cur && !prev) {
       pps_data.iep_lo = IEP_COUNT_LO;
       pps_data.seq++;
+      /* Wake the daemon via rpmsg */
+      pru_rpmsg_send(&transport, arm_dst, arm_src, &notify, 1);
     }
     prev = cur;
 
-    /* drain any rpmsg messages from host */
+    /* drain any further rpmsg messages from host */
     if (__R31 & HOST_INT) {
-      while (pru_rpmsg_receive(&transport, &src, &dst, buf, &len) ==
+      while (pru_rpmsg_receive(&transport, &arm_src, &arm_dst, buf, &len) ==
              PRU_RPMSG_SUCCESS) {
       }
     }

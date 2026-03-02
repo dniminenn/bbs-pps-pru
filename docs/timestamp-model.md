@@ -15,11 +15,12 @@ The PRU polls `__R31` bit 14 in a tight loop. A rising edge is detected when the
 ```c
 if (cur && !prev) {
     pps_data.iep_lo = IEP_COUNT_LO;   // latch raw IEP ticks
-    pps_data.seq++;                    // signal new edge to daemon
+    pps_data.seq++;                    // signal new edge
+    pru_rpmsg_send(...);               // wake the daemon via interrupt
 }
 ```
 
-The latch-then-increment order means `iep_lo` is always written **before** `seq` is bumped, which is the ordering the daemon relies on.
+The latch → increment → notify order means `iep_lo` is always written **before** `seq` is bumped, and the rpmsg send (which triggers the daemon wakeup) happens last, guaranteeing the daemon sees both fields when it wakes.
 
 ## What defines t = 0?
 
@@ -32,17 +33,17 @@ IEP_COMPEN     = 0;        // no compensation
 IEP_GLOBAL_CFG = 0x11;    // enable, increment by 1 each 5-ns cycle
 ```
 
-After this the counter free-runs and wraps at 2³² ticks (~21.5 seconds). **No absolute time meaning is assigned to t = 0** — only deltas matter. The daemon correlates IEP ticks with `CLOCK_REALTIME` at every PPS edge via the calibration loop.
+After this the counter free-runs and wraps at 2³² ticks (~21.5 seconds). **No absolute time meaning is assigned to t = 0**, as only deltas matter. The daemon correlates IEP ticks with `CLOCK_REALTIME` at every PPS edge via the calibration loop.
 
 ## Clock domain
 
 The raw timestamp lives in the **IEP clock domain**: a 200 MHz free-running counter internal to the PRU-ICSS. It has no direct relationship to `CLOCK_REALTIME` or any NTP-disciplined clock.
 
-The daemon's calibration loop ([`pru_pps_shm.c:169-181`](../daemon/pru_pps_shm.c)) performs the domain crossing on every PPS pulse — see [Clock Domains](clock-domains.md) for the full explanation.
+The daemon's calibration loop ([`pru_pps_shm.c:169-181`](../daemon/pru_pps_shm.c)) performs the domain crossing on every PPS pulse. See [Clock Domains](clock-domains.md) for the full explanation.
 
 ## 32-bit wrap handling
 
-`IEP_COUNT_LO` is 32 bits wide and wraps every ~21.5 s at 200 MHz. Since PPS pulses arrive once per second, the maximum IEP delta between consecutive pulses is ~200 M ticks — well within the 32-bit range. The daemon uses unsigned subtraction, which handles a single wrap correctly even if `pps_iep < prev_pps_iep`.
+`IEP_COUNT_LO` is 32 bits wide and wraps every ~21.5 s at 200 MHz. Since PPS pulses arrive once per second, the maximum IEP delta between consecutive pulses is ~200 M ticks, which is well within the 32-bit range. The daemon uses unsigned subtraction, which handles a single wrap correctly even if `pps_iep < prev_pps_iep`.
 
 The calibration gap (time between PPS edge and calibration read) is typically < 100 µs (~20 k ticks), so IEP wrap between the PPS latch and the calibration read is not a concern in practice.
 
