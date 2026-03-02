@@ -18,9 +18,9 @@ This approach uses **PRU0** to timestamp the PPS edge directly using the IEP (In
 
 ```
  ┌──────────────────────────────────────────────────────────────┐
- │  PRU-ICSS  (edge capture / phase detector)                  │
+ │  PRU-ICSS  (edge capture / phase detector)                   │
  │                                                              │
- │   GPS PPS ──► P8_16 (pr1_pru0_pru_r31_14)                  │
+ │   GPS PPS ──► P8_16 (pr1_pru0_pru_r31_14)                    │
  │                     │                                        │
  │              PRU0 polls R31 in tight loop (rising edge)      │
  │                     │                                        │
@@ -33,17 +33,17 @@ This approach uses **PRU0** to timestamp the PPS edge directly using the IEP (In
  ┌─────────────────────▼────────────────────────────────────────┐
  │  Linux  (clock-domain crossing + servo / policy)             │
  │                                                              │
- │   pru_pps_shm  (SCHED_FIFO:50)                              │
- │      ├── IEP ↔ wall calibration (10-sample tight bracket)   │
+ │   pru_pps_shm  (SCHED_FIFO:50)                               │
+ │      ├── IEP ↔ wall calibration (10-sample tight bracket)    │
  │      ├── ns/tick IIR filter (tracks thermal drift)           │
  │      └── projects PPS edge to CLOCK_REALTIME                 │
  │                     │                                        │
  │              NTP SHM unit 2 (mode-1 handshake)               │
  │                     │                                        │
- │              Chrony refclock SHM 2                            │
- │              (PPS, precision 1e-9, lock GPS)                  │
+ │              Chrony refclock SHM 2                           │
+ │              (PPS, precision 1e-9, lock GPS)                 │
  │                     │                                        │
- │              System clock disciplined via adjtimex            │
+ │              System clock disciplined via adjtimex           │
  └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -55,7 +55,7 @@ This approach uses **PRU0** to timestamp the PPS edge directly using the IEP (In
 
 ### Optional PTP path
 
-The IEP peripheral can also be configured as a PTP Hardware Clock (PHC) via the `pru_iep` kernel driver, exposing it as `/dev/ptpN`. This project does not use that path; it reads the IEP counter directly via `/dev/mem`. However, the same IEP hardware could support IEEE 1588 PTP timestamping if integrated with `linuxptp` instead of Chrony SHM.
+The IEP peripheral can also be configured as a PTP Hardware Clock (PHC) via the `pru_iep` kernel driver, exposing it as `/dev/ptpN`. This project does not use that path; it reads the IEP counter directly via `/dev/mem`. However, the same IEP hardware could support IEEE 1588 PTP timestamping if integrated with `linuxptp`.
 
 ### Deep dives
 
