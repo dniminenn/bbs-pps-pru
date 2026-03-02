@@ -14,14 +14,14 @@
 The daemon log line contains all the key health metrics:
 
 ```
-seq=1234 delta=200011550 offset=+352 ns gap=18354 (91.8 us) spread=1291 ns ns/tick=4.999711 [good=3411]
+seq=202 delta=200011758 offset=+634 ns gap=38925 (194.6 us) spread=1291 ns ns/tick=4.999707 [good=201]
 ```
 
 | Field | Meaning | Healthy range |
 |-------|---------|---------------|
 | `delta` | IEP ticks between consecutive PPS pulses | 199.5 M – 200.5 M |
 | `offset` | Sub-second residual of the PPS edge vs UTC second | ±1 µs steady-state |
-| `gap` | IEP ticks between PPS edge and calibration sample | < 100 µs (< 20 k ticks) |
+| `gap` | IEP ticks between PPS edge and calibration sample | < 250 µs |
 | `spread` | Wall-time bracket width of the best calibration pair | < 2 µs on RT kernel |
 | `ns/tick` | Filtered IEP tick period | ~4.99971 (200 MHz nom.) |
 | `good` / `bad` | Accepted / rejected pulse count | `bad` should be 0 |
@@ -67,7 +67,7 @@ tools/parse_offsets.sh pru_pps_log_*.txt
 2. **Offsets within range**: Should settle to < 1 µs after a few minutes of IIR convergence
 3. **Chrony selected**: `chronyc sources` shows `*` (selected) next to the PPS refclock
 4. **Chrony offset**: `chronyc tracking` shows `System time` offset in the ns to low-µs range
-5. **No large gap values**: `gap` consistently < 100 µs confirms `SCHED_FIFO` is effective
+5. **No large gap values**: `gap` consistently < 250 µs confirms the blocking `rpmsg` wakeup and `SCHED_FIFO` are effective
 
 ## What to look for in bad setups
 

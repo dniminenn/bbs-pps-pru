@@ -45,6 +45,6 @@ The daemon's calibration loop ([`pru_pps_shm.c:169-181`](../daemon/pru_pps_shm.c
 
 `IEP_COUNT_LO` is 32 bits wide and wraps every ~21.5 s at 200 MHz. Since PPS pulses arrive once per second, the maximum IEP delta between consecutive pulses is ~200 M ticks, which is well within the 32-bit range. The daemon uses unsigned subtraction, which handles a single wrap correctly even if `pps_iep < prev_pps_iep`.
 
-The calibration gap (time between PPS edge and calibration read) is typically < 100 µs (~20 k ticks), so IEP wrap between the PPS latch and the calibration read is not a concern in practice.
+The calibration gap (time between PPS edge and calibration read) is typically < 250 µs (~50 k ticks), so IEP wrap between the PPS latch and the calibration read is not a concern in practice.
 
 [Next: Clock Domains](clock-domains.md) | [Previous: Verification & Troubleshooting](verification.md)
