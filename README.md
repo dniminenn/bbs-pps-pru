@@ -2,9 +2,9 @@
 
 A complete guide to implementing a PRU-based hardware-timestamped PPS source on the AM335x BeagleBone Black, feeding nanosecond-precision timing into Chrony via shared memory.
 
-## Documentation Wiki
+## Documentation
 
-Welcome to the PRU PPS documentation. For a step-by-step guide on how this system works and how to set it up, please follow the documentation below:
+For a step-by-step guide on how this system works and how to set it up, please follow the documentation below:
 
 1. **[Architecture & Overview](docs/architecture.md)** — What is a PRU, why use it for PPS, and the system architecture.
 2. **[Hardware Requirements](docs/hardware.md)** — Supported hardware, GPS modules, and prerequisites.
