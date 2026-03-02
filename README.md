@@ -2,8 +2,6 @@
 
 **A working implementation of PRU-based PPS timestamping feeding Chrony via SHM, achieving steady-state clock offsets in the nanoseconds.**
 
-A complete guide to implementing a PRU-based hardware-timestamped PPS source on the AM335x BeagleBone Black, feeding nanosecond-precision timing into Chrony via shared memory.
-
 ```
   PRU-ICSS (edge capture)              Linux (servo / policy)
  ┌──────────────────────────┐    ┌───────────────────────────────┐
