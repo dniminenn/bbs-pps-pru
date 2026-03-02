@@ -119,13 +119,13 @@ cmdline=fsck.repair=yes earlycon coherent_pool=1M net.ifnames=0 lpj=1990656 \
 Configures P8_16 (offset 0x38) as a PRU input with pull-down disabled, input enabled, mode 6 (pr1_pru0_pru_r31_14).
 
 ```dts
-/* See PRU-PPS-PINMUX-00A0.dts */
+/* See overlays/PRU-PPS-PINMUX-00A0.dts */
 ```
 
 Compile and install:
 
 ```bash
-dtc -O dtb -o /lib/firmware/PRU-PPS-PINMUX-00A0.dtbo -b 0 -@ PRU-PPS-PINMUX-00A0.dts
+dtc -O dtb -o /lib/firmware/PRU-PPS-PINMUX-00A0.dtbo -b 0 -@ overlays/PRU-PPS-PINMUX-00A0.dts
 ```
 
 ### PRU-RPROC-VRING-00A0.dtbo
@@ -136,13 +136,13 @@ This overlay wires the PRU0/PRU1 interrupt lines for rpmsg/vring communication:
 - PRU1: `vring` (sysevt 18, ch 3, host 3), `kick` (sysevt 19, ch 1, host 1)
 
 ```dts
-/* See PRU-RPROC-VRING-00A0.dts */
+/* See overlays/PRU-RPROC-VRING-00A0.dts */
 ```
 
 Compile and install:
 
 ```bash
-dtc -O dtb -o /lib/firmware/PRU-RPROC-VRING-00A0.dtbo -b 0 -@ PRU-RPROC-VRING-00A0.dts
+dtc -O dtb -o /lib/firmware/PRU-RPROC-VRING-00A0.dtbo -b 0 -@ overlays/PRU-RPROC-VRING-00A0.dts
 ```
 
 ---
@@ -153,14 +153,17 @@ dtc -O dtb -o /lib/firmware/PRU-RPROC-VRING-00A0.dtbo -b 0 -@ PRU-RPROC-VRING-00
 
 ```
 /opt/source/pru-pps/
-├── main.c                    # PRU0 firmware
-├── resource_table.h          # rpmsg vdev resource table
-├── resource_table_min.c      # minimal resource table (no rpmsg, unused)
-├── intc_map_0.h              # INTC interrupt map
-├── AM335x_PRU_intc_rscTbl.cmd  # linker command file
-└── gen/
-    ├── pru-pps.out           # compiled firmware binary
-    └── pru-pps.map           # linker map
+├── firmware/
+│   ├── main.c                    # PRU0 firmware
+│   ├── resource_table.h          # rpmsg vdev resource table
+│   ├── intc_map_0.h              # INTC interrupt map
+│   └── AM335x_PRU_intc_rscTbl.cmd  # linker command file
+├── daemon/
+│   ├── pru_pps_shm.c
+│   └── pru-pps-shm.service
+└── overlays/
+    ├── PRU-PPS-PINMUX-00A0.dts
+    └── PRU-RPROC-VRING-00A0.dts
 ```
 
 ### main.c — PRU0 Firmware
@@ -173,7 +176,7 @@ The PRU firmware:
 5. Stores `{seq, iep_lo}` in PRU DRAM0 at offset 0x0 (physical 0x4A300000)
 
 ```c
-/* See main.c */
+/* See firmware/main.c */
 ```
 
 ### resource_table.h
@@ -189,7 +192,7 @@ Key defines:
 Maps sysevt 17 → channel 0 → host interrupt 0. This is the kick interrupt from the ARM host to PRU0.
 
 ```c
-/* See intc_map_0.h */
+/* See firmware/intc_map_0.h */
 ```
 
 ### AM335x_PRU_intc_rscTbl.cmd — Linker Command File
@@ -207,7 +210,7 @@ The `.pps_dram` section at offset 0 of PAGE 1 (PRU DRAM0) means the `pps_shared`
 ### Building the Firmware
 
 ```bash
-cd /opt/source/pru-pps
+cd /opt/source/pru-pps/firmware
 
 # Compile
 clpru -v3 -O2 --include_path=/usr/lib/ti/pru-software-support-package/include \
@@ -261,13 +264,13 @@ Chrony uses `clockTS - receiveTS` as its raw offset sample, so `receiveTimeStamp
 ### Full Source: pru_pps_shm.c
 
 ```c
-/* See pru_pps_shm.c */
+/* See daemon/pru_pps_shm.c */
 ```
 
 ### Compile and Install
 
 ```bash
-gcc -O2 -o /usr/local/bin/pru_pps_shm /opt/source/pru-pps/pru_pps_shm.c
+gcc -O2 -o /usr/local/bin/pru_pps_shm /opt/source/pru-pps/daemon/pru_pps_shm.c
 ```
 
 No special flags needed — links against standard libc only.
@@ -279,7 +282,7 @@ No special flags needed — links against standard libc only.
 `/etc/systemd/system/pru-pps-shm.service`:
 
 ```ini
-# See pru-pps-shm.service
+# See daemon/pru-pps-shm.service
 ```
 
 ```bash
