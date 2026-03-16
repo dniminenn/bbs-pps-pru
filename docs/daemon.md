@@ -77,4 +77,61 @@ rtcdevice /dev/rtc0
 
 `lock GPS` tells Chrony to only use the PPS refclock when the GPS SHM refclock (unit 0) is also valid. This is essential for correct UTC second assignment. `pps` enables the PPS refclock mode.
 
+---
+
+## PHC Discipline (`phc2sys`)
+
+Since the PRU driver captures the PPS sequence to discipline `CLOCK_REALTIME` via Chrony, the PTP hardware clock (e.g., the AM335x CPTS at `/dev/ptp0`) must be synchronized in software from the system clock.
+
+This is accomplished using the standard `phc2sys` daemon from the `linuxptp` package:
+
+```bash
+# Sync the CPTS PHC (/dev/ptp0) from the system clock (CLOCK_REALTIME)
+phc2sys -s CLOCK_REALTIME -c /dev/ptp0 -w
+```
+
+By running this as a systemd service along with `ptp4l`, your CPTS hardware clock will tightly track the PRU-disciplined system clock, enabling your device to act as an accurate PTP Grandmaster on your network.
+
+### Systemd Service Examples
+
+You can deploy `phc2sys` and `ptp4l` using the following systemd units.
+
+**1. `/etc/systemd/system/phc2sys.service`**
+```ini
+[Unit]
+Description=Synchronize PTP hardware clock (PHC) to system clock
+After=chronyd.service network.target ptp4l.service
+Wants=ptp4l.service
+
+[Service]
+Type=simple
+# -s: source clock (system clock)
+# -c: destination clock (CPTS hardware clock)
+# -w: wait for ptp4l to start
+ExecStart=/usr/sbin/phc2sys -s CLOCK_REALTIME -c /dev/ptp0 -w
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**2. `/etc/systemd/system/ptp4l.service`**
+```ini
+[Unit]
+Description=Precision Time Protocol (PTP) Grandmaster service
+After=network.target
+
+[Service]
+Type=simple
+# -i eth0: bind to your network interface
+# -m: print messages to stdout/syslog
+ExecStart=/usr/sbin/ptp4l -i eth0 -m
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
 [Next: Verification & Troubleshooting](verification.md) | [Previous: PRU Firmware](firmware.md)
